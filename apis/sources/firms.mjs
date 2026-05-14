@@ -112,7 +112,12 @@ export async function briefing(mapKey) {
   }
 
   // Fetch all hotspots in parallel
-  const entries = Object.entries(HOTSPOTS);
+  let entries = Object.entries(HOTSPOTS);
+  if (globalThis.__CRUCIX_RUNTIME__ === 'cloudflare') {
+    // Save subrequests on Cloudflare Free Plan
+    entries = entries.slice(0, 3);
+  }
+  
   const rawResults = await Promise.all(
     entries.map(async ([k, box]) => {
       const fires = await fetchFires(key, { ...box, days: 2 });

@@ -32,13 +32,9 @@ const SYMBOLS = {
 
 const CLOUDFLARE_SYMBOLS = [
   '^GSPC',
-  '^IXIC',
   '^VIX',
   'GC=F',
-  'SI=F',
   'CL=F',
-  'BZ=F',
-  'NG=F',
   'BTC-USD',
 ];
 
