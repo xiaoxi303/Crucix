@@ -412,10 +412,12 @@ async function runSweepCycle() {
         console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
         synthesized.ideas = [];
         synthesized.ideasSource = 'llm-failed';
+        synthesized.ideasError = llmErr.message;
       }
     } else {
       synthesized.ideas = [];
       synthesized.ideasSource = 'disabled';
+      synthesized.ideasError = process.env.ENABLE_LLM === 'false' ? 'LLM 未启用' : 'LLM_API_KEY 未配置，AI 创意模块已禁用。';
     }
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
