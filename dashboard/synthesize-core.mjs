@@ -148,7 +148,7 @@ async function fetchRSS(url, source) {
 }
 
 export async function fetchAllNews() {
-  let feeds = [
+  const feeds = [
     ['http://feeds.bbci.co.uk/news/world/rss.xml', 'BBC'],
     ['https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NYT'],
     ['https://www.aljazeera.com/xml/rss/all.xml', 'Al Jazeera'],
@@ -161,12 +161,6 @@ export async function fetchAllNews() {
     ['https://indianexpress.com/section/india/feed/', 'Indian Express'],
     ['https://en.mercopress.com/rss/latin-america', 'MercoPress'],
   ];
-
-  if (globalThis.__CRUCIX_RUNTIME__ === 'cloudflare') {
-    // Cloudflare Free Plan limits workers to 50 subrequests.
-    // Cut down the RSS feeds to stay under the limit.
-    feeds = feeds.slice(0, 3);
-  }
 
   const results = await Promise.allSettled(feeds.map(([url, source]) => fetchRSS(url, source)));
   const allNews = results.filter(result => result.status === 'fulfilled').flatMap(result => result.value);
