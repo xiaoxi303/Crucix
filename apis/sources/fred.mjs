@@ -39,6 +39,27 @@ const KEY_SERIES = {
   DTWEXBGS: 'USD Trade Weighted Index',
 };
 
+const CLOUDFLARE_SERIES = [
+  'DFF',
+  'T10Y2Y',
+  'VIXCLS',
+  'BAMLH0A0HYM2',
+  'DTWEXBGS',
+  'ICSA',
+  'MORTGAGE30US',
+  'M2SL',
+  'DCOILWTICO',
+  'GOLDAMGBD228NLBM',
+];
+
+function selectedSeriesEntries() {
+  const configured = process.env.FRED_SERIES_IDS
+    ? process.env.FRED_SERIES_IDS.split(',').map(item => item.trim()).filter(Boolean)
+    : null;
+  const ids = configured || (process.env.CRUCIX_RUNTIME === 'cloudflare' ? CLOUDFLARE_SERIES : Object.keys(KEY_SERIES));
+  return ids.filter(id => KEY_SERIES[id]).map(id => [id, KEY_SERIES[id]]);
+}
+
 // Get latest value for a series
 async function getSeriesLatest(seriesId, apiKey) {
   const params = new URLSearchParams({
@@ -62,7 +83,7 @@ export async function briefing(apiKey) {
     };
   }
 
-  const entries = Object.entries(KEY_SERIES);
+  const entries = selectedSeriesEntries();
   const results = await Promise.all(
     entries.map(async ([id, label]) => {
       const data = await getSeriesLatest(id, apiKey);

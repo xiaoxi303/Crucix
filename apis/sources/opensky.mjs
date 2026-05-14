@@ -63,9 +63,21 @@ const HOTSPOTS = {
   hornOfAfrica: { lamin: 5, lomin: 40, lamax: 15, lomax: 55, label: 'Horn of Africa' },
 };
 
+const CLOUDFLARE_HOTSPOTS = ['middleEast', 'taiwan', 'ukraine'];
+
+function selectedHotspotEntries() {
+  const configured = process.env.OPENSKY_HOTSPOTS
+    ? process.env.OPENSKY_HOTSPOTS.split(',').map(item => item.trim()).filter(Boolean)
+    : null;
+  const keys = configured || (process.env.CRUCIX_RUNTIME === 'cloudflare' || globalThis.__CRUCIX_RUNTIME__ === 'cloudflare'
+    ? CLOUDFLARE_HOTSPOTS
+    : Object.keys(HOTSPOTS));
+  return keys.filter(key => HOTSPOTS[key]).map(key => [key, HOTSPOTS[key]]);
+}
+
 // Briefing — check hotspot regions for flight activity
 export async function briefing() {
-  const hotspotEntries = Object.entries(HOTSPOTS);
+  const hotspotEntries = selectedHotspotEntries();
   const results = await Promise.all(
     hotspotEntries.map(async ([key, box]) => {
       const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);

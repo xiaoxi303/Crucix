@@ -214,6 +214,7 @@ async function handleRequest(request, env, ctx) {
     return json({
       current: language,
       supported: getSupportedLocaleInfo(),
+      locale: getRuntimeLocale(language),
     });
   }
 

@@ -34,6 +34,11 @@ const ENV_KEYS = [
   'CRUCIX_LANG',
   'REFRESH_INTERVAL_MINUTES',
   'PUBLIC_APP_NAME',
+  'PUBLIC_POLLING_INTERVAL_SECONDS',
+  'CRUCIX_RUNTIME',
+  'FRED_SERIES_IDS',
+  'YFINANCE_SYMBOLS',
+  'OPENSKY_HOTSPOTS',
 ];
 
 export function ensureProcessEnv(env = {}) {
@@ -42,6 +47,8 @@ export function ensureProcessEnv(env = {}) {
   }
   if (!globalThis.process.env) globalThis.process.env = {};
   if (!Array.isArray(globalThis.process.argv)) globalThis.process.argv = [];
+  globalThis.__CRUCIX_RUNTIME__ = 'cloudflare';
+  globalThis.process.env.CRUCIX_RUNTIME = 'cloudflare';
 
   for (const key of ENV_KEYS) {
     if (env[key] !== undefined && env[key] !== null) {
@@ -159,4 +166,3 @@ export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}
     return { ok: false, error: err.message };
   }
 }
-

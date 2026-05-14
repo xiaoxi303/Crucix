@@ -323,9 +323,11 @@ app.get('/api/config', (req, res) => {
 
 // API: available locales
 app.get('/api/locales', (req, res) => {
+  const language = requestLanguage(req);
   res.json({
-    current: requestLanguage(req),
+    current: language,
     supported: getSupportedLocales(),
+    locale: getLocaleForLanguage(language),
   });
 });
 

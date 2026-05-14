@@ -30,6 +30,28 @@ const SYMBOLS = {
   '^VIX': 'VIX',
 };
 
+const CLOUDFLARE_SYMBOLS = [
+  '^GSPC',
+  '^IXIC',
+  '^VIX',
+  'GC=F',
+  'SI=F',
+  'CL=F',
+  'BZ=F',
+  'NG=F',
+  'BTC-USD',
+];
+
+function selectedSymbols() {
+  if (process.env.YFINANCE_SYMBOLS) {
+    return process.env.YFINANCE_SYMBOLS.split(',').map(item => item.trim()).filter(Boolean);
+  }
+  if (process.env.CRUCIX_RUNTIME === 'cloudflare' || globalThis.__CRUCIX_RUNTIME__ === 'cloudflare') {
+    return CLOUDFLARE_SYMBOLS;
+  }
+  return Object.keys(SYMBOLS);
+}
+
 async function fetchQuote(symbol) {
   try {
     const url = `${BASE}/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
@@ -87,7 +109,7 @@ export async function briefing() {
 }
 
 export async function collect() {
-  const symbols = Object.keys(SYMBOLS);
+  const symbols = selectedSymbols();
   const results = await Promise.allSettled(
     symbols.map(s => fetchQuote(s))
   );
