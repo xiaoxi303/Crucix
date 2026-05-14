@@ -1,0 +1,34 @@
+# Cloudflare Workers local dev variables.
+# Copy to .dev.vars for `npm run cf:dev`; do not commit .dev.vars.
+
+# === Public/non-secret vars ===
+LANGUAGE=zh-CN
+REFRESH_INTERVAL_MINUTES=15
+PUBLIC_APP_NAME=Crucix 中文版
+PUBLIC_POLLING_INTERVAL_SECONDS=15
+ENABLE_LLM=false
+ENABLE_TELEGRAM=false
+ENABLE_DISCORD=false
+ENABLE_TELEGRAM_SOURCE=true
+ENABLE_REDDIT_SOURCE=false
+
+# === Secrets for local dev only ===
+# In production, set these with `npm run cf:secret` or `npx wrangler secret put KEY`.
+FRED_API_KEY=
+FIRMS_MAP_KEY=
+EIA_API_KEY=
+BLS_API_KEY=
+AISSTREAM_API_KEY=
+ACLED_EMAIL=
+ACLED_PASSWORD=
+CLOUDFLARE_API_TOKEN=
+LLM_PROVIDER=
+LLM_API_KEY=
+LLM_MODEL=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+DISCORD_BOT_TOKEN=
+DISCORD_WEBHOOK_URL=
+DISCORD_CHANNEL_ID=
+DISCORD_GUILD_ID=
+ADMIN_TOKEN=

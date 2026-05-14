@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "crucix-cloudflare",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-05-14",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dashboard/public",
+    "binding": "ASSETS"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "CRUCIX_KV",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID",
+      "preview_id": "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+    }
+  ],
+  "vars": {
+    "LANGUAGE": "zh-CN",
+    "REFRESH_INTERVAL_MINUTES": "15",
+    "PUBLIC_APP_NAME": "Crucix 中文版",
+    "PUBLIC_POLLING_INTERVAL_SECONDS": "15",
+    "ENABLE_LLM": "false",
+    "ENABLE_TELEGRAM": "false",
+    "ENABLE_DISCORD": "false",
+    "ENABLE_TELEGRAM_SOURCE": "true",
+    "ENABLE_REDDIT_SOURCE": "false"
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

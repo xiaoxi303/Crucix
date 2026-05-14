@@ -8,7 +8,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import config from './crucix.config.mjs';
-import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
+import { getLocaleForLanguage, normalizeLanguage, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
@@ -236,6 +236,36 @@ if (discordAlerter.isConfigured) {
 const app = express();
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
+function requestLanguage(req) {
+  return normalizeLanguage(req.query.lang || process.env.CRUCIX_LANG || process.env.LANGUAGE || currentLanguage);
+}
+
+function publicConfigFor(req) {
+  return {
+    runtime: 'node',
+    appName: process.env.PUBLIC_APP_NAME || 'Crucix 中文版',
+    language: requestLanguage(req),
+    refreshIntervalMinutes: config.refreshIntervalMinutes,
+    pollingIntervalSeconds: Number.parseInt(process.env.PUBLIC_POLLING_INTERVAL_SECONDS || '15', 10) || 15,
+    features: {
+      llm: Boolean(config.llm.provider),
+      telegram: Boolean(config.telegram.botToken && config.telegram.chatId),
+      discord: Boolean(config.discord?.botToken || config.discord?.webhookUrl),
+    },
+  };
+}
+
+function getAdminToken(req) {
+  const auth = req.get('authorization') || '';
+  if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
+  return req.get('x-admin-token') || req.query.token || '';
+}
+
+function canTriggerSweep(req) {
+  if (process.env.ADMIN_TOKEN) return getAdminToken(req) === process.env.ADMIN_TOKEN;
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip) || req.hostname === 'localhost';
+}
+
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
   if (!currentData) {
@@ -245,8 +275,14 @@ app.get('/', (req, res) => {
     let html = readFileSync(htmlPath, 'utf-8');
     
     // Inject locale data into the HTML
-    const locale = getLocale();
-    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+    const language = requestLanguage(req);
+    const locale = getLocaleForLanguage(language);
+    const localeScript = `<script>
+window.__CRUCIX_RUNTIME__ = "node";
+window.__CRUCIX_LANGUAGE__ = ${JSON.stringify(language).replace(/<\/script>/gi, '<\\/script>')};
+window.__CRUCIX_CONFIG__ = ${JSON.stringify(publicConfigFor(req)).replace(/<\/script>/gi, '<\\/script>')};
+window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};
+</script>`;
     html = html.replace('</head>', `${localeScript}\n</head>`);
     
     res.type('html').send(html);
@@ -276,16 +312,35 @@ app.get('/api/health', (req, res) => {
     llmProvider: config.llm.provider,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
-    language: currentLanguage,
+    language: requestLanguage(req),
   });
+});
+
+// API: frontend-safe config (never include secrets)
+app.get('/api/config', (req, res) => {
+  res.json(publicConfigFor(req));
 });
 
 // API: available locales
 app.get('/api/locales', (req, res) => {
   res.json({
-    current: currentLanguage,
+    current: requestLanguage(req),
     supported: getSupportedLocales(),
   });
+});
+
+// API: manual sweep trigger. In production, set ADMIN_TOKEN and send Bearer token.
+app.post('/api/sweep', (req, res) => {
+  if (!canTriggerSweep(req)) {
+    return res.status(403).json({
+      error: process.env.ADMIN_TOKEN
+        ? 'ADMIN_TOKEN 校验失败'
+        : '生产环境未设置 ADMIN_TOKEN，禁止公开触发情报扫描',
+    });
+  }
+  if (sweepInProgress) return res.status(409).json({ error: '情报扫描已在进行中' });
+  runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
+  res.status(202).json({ ok: true, status: 'accepted', message: '情报扫描已触发' });
 });
 
 // SSE: live updates
@@ -294,7 +349,6 @@ app.get('/events', (req, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
   });
   res.write('data: {"type":"connected"}\n\n');
   sseClients.add(res);
