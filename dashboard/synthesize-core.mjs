@@ -462,6 +462,7 @@ export async function synthesize(data) {
     markets,
     ideas: [],
     ideasSource: 'disabled',
+    ideasError: null,
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
     // Pass through source status from briefing
     sourceStatus: data.sourceStatus || {},
@@ -521,6 +522,7 @@ export function createEmptyPayload() {
     markets: { indexes: [], rates: [], commodities: [], crypto: [], vix: null, timestamp: null },
     ideas: [],
     ideasSource: 'disabled',
+    ideasError: null,
     newsFeed: [],
     sourceStatus: {},
     sourceErrors: [],

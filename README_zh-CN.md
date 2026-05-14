@@ -103,7 +103,7 @@ npm run cf:secret
 
 可选增强：
 
-- `LLM_API_KEY`
+- `LLM_API_KEY` (例如: nvapi-xxxxxxxx)
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 - `DISCORD_WEBHOOK_URL`
@@ -117,7 +117,10 @@ LANGUAGE=zh-CN
 REFRESH_INTERVAL_MINUTES=15
 PUBLIC_APP_NAME=Crucix 中文版
 PUBLIC_POLLING_INTERVAL_SECONDS=15
-ENABLE_LLM=false
+ENABLE_LLM=true
+LLM_PROVIDER=nvidia
+LLM_MODEL=minimaxai/minimax-m2.7
+LLM_BASE_URL=https://integrate.api.nvidia.com/v1
 ENABLE_TELEGRAM=false
 ENABLE_DISCORD=false
 ENABLE_TELEGRAM_SOURCE=true

@@ -172,7 +172,11 @@ export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}
     synthesized.delta = delta;
 
     const llmProvider = await createCloudflareLLMProvider(env);
-    if (llmProvider?.isConfigured) {
+    if (boolEnv(env.ENABLE_LLM, false) && !env.LLM_API_KEY) {
+      synthesized.ideas = [];
+      synthesized.ideasSource = 'disabled';
+      synthesized.ideasError = 'LLM_API_KEY 未配置，AI 创意模块已禁用。';
+    } else if (llmProvider?.isConfigured) {
       try {
         const previousIdeas = memory.getLastRun()?.ideas || [];
         const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
@@ -182,10 +186,12 @@ export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}
         console.warn(`[Cloudflare Sweep] LLM 生成失败: ${err.message}`);
         synthesized.ideas = [];
         synthesized.ideasSource = 'llm-failed';
+        synthesized.ideasError = err.message;
       }
     } else {
       synthesized.ideas = [];
       synthesized.ideasSource = 'disabled';
+      synthesized.ideasError = 'LLM 未启用';
     }
 
     await memory.pruneAlertedSignals();

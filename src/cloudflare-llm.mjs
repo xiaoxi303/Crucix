@@ -9,6 +9,7 @@ export async function createCloudflareLLMProvider(env = {}) {
   const provider = (env.LLM_PROVIDER || '').toLowerCase();
   const apiKey = env.LLM_API_KEY || null;
   const model = env.LLM_MODEL || null;
+  const baseUrl = env.LLM_BASE_URL || null;
   if (!provider) return null;
 
   switch (provider) {
@@ -38,7 +39,11 @@ export async function createCloudflareLLMProvider(env = {}) {
     }
     case 'grok': {
       const { GrokProvider } = await import('../lib/llm/grok.mjs');
-      return new GrokProvider({ apiKey, model });
+      return new GrokProvider({ apiKey, model, baseUrl });
+    }
+    case 'nvidia': {
+      const { NvidiaProvider } = await import('../lib/llm/nvidia.mjs');
+      return new NvidiaProvider({ apiKey, model, baseUrl });
     }
     default:
       console.warn(`[Cloudflare LLM] ${provider} 在 Worker 模式下不可用，已自动关闭。`);
