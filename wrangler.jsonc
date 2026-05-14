@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "crucix-cloudflare",
+  "name": "crucix",
   "main": "src/worker.mjs",
   "compatibility_date": "2026-05-14",
   "compatibility_flags": ["nodejs_compat"],
