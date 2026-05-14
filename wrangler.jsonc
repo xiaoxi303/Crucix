@@ -8,13 +8,8 @@
     "directory": "./dashboard/public",
     "binding": "ASSETS"
   },
-  "kv_namespaces": [
-    {
-      "binding": "CRUCIX_KV",
-      "id": "REPLACE_WITH_KV_NAMESPACE_ID",
-      "preview_id": "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
-    }
-  ],
+  // Cloudflare Dashboard 部署时，请在 Worker 的 Settings > Bindings 中绑定 KV。
+  // 变量名必须是 CRUCIX_KV；命令行用户也可以运行 `npm run cf:setup` 自动写入 kv_namespaces。
   "vars": {
     "LANGUAGE": "zh-CN",
     "REFRESH_INTERVAL_MINUTES": "15",

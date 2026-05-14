@@ -33,10 +33,11 @@ npm run dev
 ```bash
 npm install
 npx wrangler login
-npm run cf:setup
 npm run cf:secret
 npm run cf:deploy
 ```
+
+如果你使用 Cloudflare Dashboard 的 GitHub 一键部署，可以不运行 `cf:setup`。部署时或部署后在 Worker 的 **Settings > Bindings** 中创建/选择 KV namespace，并把变量名绑定为 `CRUCIX_KV` 即可。
 
 本地测试 Worker：
 
@@ -50,9 +51,19 @@ npm run cf:dev
 npm run cf:tail
 ```
 
-## 一键创建 KV
+## 绑定 KV
 
-执行：
+推荐方式是在 Cloudflare Dashboard 中一键绑定：
+
+1. 打开 Worker。
+2. 进入 **Settings > Bindings**。
+3. 添加 **KV namespace**。
+4. 变量名填写 `CRUCIX_KV`。
+5. 选择已有 KV 空间，或直接新建一个。
+
+仓库默认不提交占位 `kv_namespaces`，这样 GitHub 自动部署不会因为 `REPLACE_WITH_KV_NAMESPACE_ID` 这类假 id 失败。
+
+如果你更喜欢命令行创建 KV，也可以执行：
 
 ```bash
 npm run cf:setup

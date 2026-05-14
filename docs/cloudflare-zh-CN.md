@@ -22,7 +22,19 @@ npx wrangler login
 
 浏览器会打开 Cloudflare 授权页。授权成功后回到终端。
 
-## 4. 一键创建 KV
+## 4. 绑定 KV
+
+如果你是在 Cloudflare Dashboard 里用 GitHub 一键部署，推荐直接在绑定界面创建/选择 KV：
+
+1. 打开当前 Worker。
+2. 进入 **Settings > Bindings**。
+3. 添加 **KV namespace**。
+4. 变量名填写 `CRUCIX_KV`。
+5. 选择已有 KV 空间，或者在这里新建一个 KV 空间。
+
+这就是 Dashboard 的一键绑定 KV 空间方式。仓库里的 `wrangler.jsonc` 默认不会提交占位 `kv_namespaces`，否则 Cloudflare CI 会把 `REPLACE_WITH_KV_NAMESPACE_ID` 当成真实 id 并导致部署失败。
+
+如果你使用本地命令行部署，也可以执行：
 
 ```bash
 npm run cf:setup
@@ -33,7 +45,7 @@ npm run cf:setup
 - `CRUCIX_KV`
 - `CRUCIX_KV` preview namespace
 
-并写入 `wrangler.jsonc`：
+并写入本地 `wrangler.jsonc`：
 
 ```jsonc
 "kv_namespaces": [
