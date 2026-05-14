@@ -43,10 +43,11 @@ const CLOUDFLARE_SYMBOLS = [
 ];
 
 function selectedSymbols() {
-  if (process.env.YFINANCE_SYMBOLS) {
-    return process.env.YFINANCE_SYMBOLS.split(',').map(item => item.trim()).filter(Boolean);
+  const pe = typeof process !== 'undefined' ? process.env : {};
+  if (pe?.YFINANCE_SYMBOLS) {
+    return pe.YFINANCE_SYMBOLS.split(',').map(item => item.trim()).filter(Boolean);
   }
-  if (process.env.CRUCIX_RUNTIME === 'cloudflare' || globalThis.__CRUCIX_RUNTIME__ === 'cloudflare') {
+  if (pe?.CRUCIX_RUNTIME === 'cloudflare' || globalThis.__CRUCIX_RUNTIME__ === 'cloudflare') {
     return CLOUDFLARE_SYMBOLS;
   }
   return Object.keys(SYMBOLS);

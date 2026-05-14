@@ -17,14 +17,15 @@ const WATCHLIST_COUNTRIES = [
   'YE', 'AF', 'IQ', 'LB', 'PS', 'TW', 'BY', 'VE', 'CU'
 ];
 
-function getAuthHeaders() {
-  const token = process.env.CLOUDFLARE_API_TOKEN;
+// @param {string} tokenParam - CLOUDFLARE_API_TOKEN (passed from caller)
+function getAuthHeaders(tokenParam) {
+  const token = tokenParam || (typeof process !== 'undefined' ? process.env?.CLOUDFLARE_API_TOKEN : undefined);
   if (!token) return null;
   return { Authorization: `Bearer ${token}` };
 }
 
-async function fetchAnnotations() {
-  const headers = getAuthHeaders();
+async function fetchAnnotations(token) {
+  const headers = getAuthHeaders(token);
   if (!headers) return { error: 'no_credentials' };
 
   // Cloudflare Radar Annotations — internet outages and government shutdowns
@@ -47,8 +48,8 @@ async function fetchAnnotations() {
   }));
 }
 
-async function fetchAttackSummary() {
-  const headers = getAuthHeaders();
+async function fetchAttackSummary(token) {
+  const headers = getAuthHeaders(token);
   if (!headers) return { error: 'no_credentials' };
 
   // Layer 3 DDoS attack summaries by protocol and vector
@@ -74,8 +75,8 @@ async function fetchAttackSummary() {
   return result;
 }
 
-async function fetchTrafficAnomalies() {
-  const headers = getAuthHeaders();
+async function fetchTrafficAnomalies(token) {
+  const headers = getAuthHeaders(token);
   if (!headers) return { error: 'no_credentials' };
 
   // Traffic anomalies — significant deviations from normal patterns
@@ -145,8 +146,10 @@ function buildSignals(outages, anomalies) {
   return signals;
 }
 
-export async function briefing() {
-  if (!process.env.CLOUDFLARE_API_TOKEN) {
+// @param {string} apiToken - CLOUDFLARE_API_TOKEN (passed from caller)
+export async function briefing(apiToken) {
+  const token = apiToken || (typeof process !== 'undefined' ? process.env?.CLOUDFLARE_API_TOKEN : undefined);
+  if (!token) {
     return {
       source: 'Cloudflare-Radar',
       timestamp: new Date().toISOString(),
@@ -156,9 +159,9 @@ export async function briefing() {
   }
 
   const [outages, attacks, anomalies] = await Promise.all([
-    fetchAnnotations(),
-    fetchAttackSummary(),
-    fetchTrafficAnomalies(),
+    fetchAnnotations(token),
+    fetchAttackSummary(token),
+    fetchTrafficAnomalies(token),
   ]);
 
   // Handle complete failure

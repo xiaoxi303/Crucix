@@ -206,8 +206,9 @@ export async function getAircraftInArea(lat, lon, radiusNm = 250, apiKey) {
 }
 
 // Briefing — attempt to get military flight data, document what's available
-export async function briefing() {
-  const apiKey = process.env.ADSB_API_KEY || process.env.RAPIDAPI_KEY || null;
+// @param {string} apiKeyParam - ADSB_API_KEY (passed from caller)
+export async function briefing(apiKeyParam) {
+  const apiKey = apiKeyParam || (typeof process !== 'undefined' ? (process.env?.ADSB_API_KEY || process.env?.RAPIDAPI_KEY) : undefined) || null;
   const militaryAircraft = await getMilitaryAircraft(apiKey);
 
   // If we got data, analyze it

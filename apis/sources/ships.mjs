@@ -24,8 +24,9 @@ const CHOKEPOINTS = {
 };
 
 // For non-realtime briefing, use web-searchable vessel data
-export async function briefing() {
-  const hasKey = !!process.env.AISSTREAM_API_KEY;
+// @param {string} aisKey - AISSTREAM_API_KEY (passed from caller)
+export async function briefing(aisKey) {
+  const hasKey = Boolean(aisKey || (typeof process !== 'undefined' ? process.env?.AISSTREAM_API_KEY : undefined));
 
   return {
     source: 'Maritime/AIS',

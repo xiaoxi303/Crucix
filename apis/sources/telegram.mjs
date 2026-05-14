@@ -36,8 +36,9 @@ const DEFAULT_CHANNELS = [
 ];
 
 // Allow user to add custom channels via env var
-function loadChannels() {
-  const custom = process.env.TELEGRAM_CHANNELS;
+// @param {string} customChannelsStr - comma-separated channel IDs (passed from caller)
+function loadChannels(customChannelsStr) {
+  const custom = customChannelsStr || (typeof process !== 'undefined' ? process.env?.TELEGRAM_CHANNELS : undefined);
   if (!custom) return DEFAULT_CHANNELS;
 
   const customIds = custom.split(',').map(s => s.trim()).filter(Boolean);
@@ -50,7 +51,13 @@ function loadChannels() {
   return [...DEFAULT_CHANNELS, ...extras];
 }
 
-const CHANNELS = loadChannels();
+// Lazy channel loading — DO NOT evaluate at module scope (Cloudflare Workers compat)
+let _cachedChannels = null;
+function getChannels(customChannelsStr) {
+  if (customChannelsStr) return loadChannels(customChannelsStr);
+  if (!_cachedChannels) _cachedChannels = loadChannels();
+  return _cachedChannels;
+}
 
 // Urgent keywords that flag high-priority posts
 // Organized by domain for maintainability
@@ -76,7 +83,11 @@ const URGENT_KEYWORDS = [
 
 // ─── Bot API mode ───────────────────────────────────────────────────────────
 
-const botBase = () => `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
+// @param {string} tokenParam - TELEGRAM_BOT_TOKEN (passed from caller)
+const botBase = (tokenParam) => {
+  const token = tokenParam || (typeof process !== 'undefined' ? process.env?.TELEGRAM_BOT_TOKEN : undefined);
+  return `https://api.telegram.org/bot${token}`;
+};
 
 // Get recent updates the bot has received
 export async function getUpdates(opts = {}) {
@@ -261,8 +272,11 @@ function groupByTopic(allPosts, channelMeta) {
 
 // ─── Briefing ───────────────────────────────────────────────────────────────
 
-export async function briefing() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+// @param {string} botTokenParam - TELEGRAM_BOT_TOKEN (passed from caller)
+// @param {string} customChannelsStr - TELEGRAM_CHANNELS (passed from caller)
+export async function briefing(botTokenParam, customChannelsStr) {
+  const token = botTokenParam || (typeof process !== 'undefined' ? process.env?.TELEGRAM_BOT_TOKEN : undefined);
+  const CHANNELS = getChannels(customChannelsStr);
 
   // Try Bot API first if token is available
   if (token) {

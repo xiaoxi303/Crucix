@@ -52,11 +52,13 @@ const CLOUDFLARE_SERIES = [
   'GOLDAMGBD228NLBM',
 ];
 
-function selectedSeriesEntries() {
-  const configured = process.env.FRED_SERIES_IDS
-    ? process.env.FRED_SERIES_IDS.split(',').map(item => item.trim()).filter(Boolean)
-    : null;
-  const ids = configured || (process.env.CRUCIX_RUNTIME === 'cloudflare' ? CLOUDFLARE_SERIES : Object.keys(KEY_SERIES));
+// @param {object} opts - { seriesIds, isCloudflare }
+function selectedSeriesEntries(opts = {}) {
+  const pe = typeof process !== 'undefined' ? process.env : {};
+  const configured = (opts.seriesIds || pe?.FRED_SERIES_IDS || '')
+    .split(',').map(item => item.trim()).filter(Boolean);
+  const isCloudflare = opts.isCloudflare ?? (pe?.CRUCIX_RUNTIME === 'cloudflare' || globalThis.__CRUCIX_RUNTIME__ === 'cloudflare');
+  const ids = configured.length ? configured : (isCloudflare ? CLOUDFLARE_SERIES : Object.keys(KEY_SERIES));
   return ids.filter(id => KEY_SERIES[id]).map(id => [id, KEY_SERIES[id]]);
 }
 

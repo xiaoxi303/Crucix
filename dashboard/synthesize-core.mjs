@@ -1,5 +1,6 @@
 // Worker-safe dashboard synthesizer.
 // 保持输出结构与 jarvis.html 期望一致，但不读取本地 runs/，也不调用 child_process。
+// 所有数值字段使用 safeNumber() 确保不出现 undefined / NaN。
 
 const cyrillic = /[\u0400-\u04FF]/;
 
@@ -61,6 +62,30 @@ const geoKeywords = {
   UN: [40.7, -74],
 };
 
+// ── Safe value helpers ──
+// These ensure NO undefined, NaN, or $undefined ever reaches the frontend.
+
+/** Return a finite number or null. Never undefined, never NaN. */
+function safeNumber(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Return a finite number or 0. For count fields. */
+function safeCount(value) {
+  return safeNumber(value) ?? 0;
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function safeString(value) {
+  if (value === null || value === undefined) return null;
+  return String(value);
+}
+
 function isEnglish(text) {
   return Boolean(text) && !cyrillic.test(text.substring(0, 80));
 }
@@ -90,9 +115,9 @@ function sumAirHotspots(hotspots = []) {
 function summarizeAirHotspots(hotspots = []) {
   return hotspots.map(hotspot => ({
     region: hotspot.region,
-    total: hotspot.totalAircraft || 0,
-    noCallsign: hotspot.noCallsign || 0,
-    highAlt: hotspot.highAltitude || 0,
+    total: safeCount(hotspot.totalAircraft),
+    noCallsign: safeCount(hotspot.noCallsign),
+    highAlt: safeCount(hotspot.highAltitude),
     top: Object.entries(hotspot.byCountry || {}).sort((a, b) => b[1] - a[1]).slice(0, 5),
   }));
 }
@@ -217,10 +242,6 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
   return feed.slice(0, 50);
 }
 
-function safeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
 export async function synthesize(data) {
   const sources = data?.sources || {};
   const openSkyData = sources.OpenSky || {};
@@ -231,37 +252,37 @@ export async function synthesize(data) {
   const firmsData = sources.FIRMS || {};
   const thermal = safeArray(firmsData.hotspots).map(hotspot => ({
     region: hotspot.region,
-    det: hotspot.totalDetections || 0,
-    night: hotspot.nightDetections || 0,
-    hc: hotspot.highConfidence || 0,
-    fires: safeArray(hotspot.highIntensity).slice(0, 8).map(item => ({ lat: item.lat, lon: item.lon, frp: item.frp || 0 })),
+    det: safeCount(hotspot.totalDetections),
+    night: safeCount(hotspot.nightDetections),
+    hc: safeCount(hotspot.highConfidence),
+    fires: safeArray(hotspot.highIntensity).slice(0, 8).map(item => ({ lat: safeNumber(item.lat) ?? 0, lon: safeNumber(item.lon) ?? 0, frp: safeNumber(item.frp) ?? 0 })),
   }));
 
   const sdrData = sources.KiwiSDR || {};
   const sdrConflict = sdrData.conflictZones || {};
   const sdrZones = Object.values(sdrConflict).map(zone => ({
     region: zone.region,
-    count: zone.count || 0,
+    count: safeCount(zone.count),
     receivers: safeArray(zone.receivers).slice(0, 5).map(receiver => ({
       name: receiver.name || '',
-      lat: receiver.lat || 0,
-      lon: receiver.lon || 0,
+      lat: safeNumber(receiver.lat) ?? 0,
+      lon: safeNumber(receiver.lon) ?? 0,
     })),
   }));
 
   const tgData = sources.Telegram || {};
   const tgUrgent = safeArray(tgData.urgentPosts).filter(post => isEnglish(post.text)).map(post => ({
     channel: post.channel || post.chat,
-    text: post.text?.substring(0, 200),
-    views: post.views,
+    text: (post.text || '').substring(0, 200),
+    views: safeCount(post.views),
     date: post.date,
     urgentFlags: post.urgentFlags || [],
     postId: post.postId || null,
   }));
   const tgTop = safeArray(tgData.topPosts).filter(post => isEnglish(post.text)).map(post => ({
     channel: post.channel || post.chat,
-    text: post.text?.substring(0, 200),
-    views: post.views,
+    text: (post.text || '').substring(0, 200),
+    views: safeCount(post.views),
     date: post.date,
     urgentFlags: [],
     postId: post.postId || null,
@@ -269,7 +290,7 @@ export async function synthesize(data) {
 
   const energyData = sources.EIA || {};
   const oilPrices = energyData.oilPrices || {};
-  const wtiRecent = safeArray(oilPrices.wti?.recent).map(item => item.value);
+  const wtiRecent = safeArray(oilPrices.wti?.recent).map(item => safeNumber(item.value));
   const yfData = sources.YFinance || {};
   const yfQuotes = yfData.quotes || {};
   const yfGold = yfQuotes['GC=F'];
@@ -278,33 +299,34 @@ export async function synthesize(data) {
   const yfBrent = yfQuotes['BZ=F'];
   const yfNatgas = yfQuotes['NG=F'];
 
+  // ── CRITICAL: All values must be safeNumber (null, not undefined/NaN) ──
   const energy = {
-    wti: yfWti?.price || oilPrices.wti?.value,
-    brent: yfBrent?.price || oilPrices.brent?.value,
-    natgas: yfNatgas?.price || energyData.gasPrice?.value,
-    crudeStocks: energyData.inventories?.crudeStocks?.value,
-    wtiRecent: yfWti?.history?.map(item => item.close) || wtiRecent,
+    wti: safeNumber(yfWti?.price) ?? safeNumber(oilPrices.wti?.value),
+    brent: safeNumber(yfBrent?.price) ?? safeNumber(oilPrices.brent?.value),
+    natgas: safeNumber(yfNatgas?.price) ?? safeNumber(energyData.gasPrice?.value),
+    crudeStocks: safeNumber(energyData.inventories?.crudeStocks?.value),
+    wtiRecent: (yfWti?.history?.map(item => safeNumber(item.close)) || wtiRecent).filter(v => v !== null),
     signals: energyData.signals || [],
   };
 
   const markets = {
-    indexes: safeArray(yfData.indexes).map(q => ({ symbol: q.symbol, name: q.name, price: q.price, change: q.change, changePct: q.changePct, history: q.history || [] })),
-    rates: safeArray(yfData.rates).map(q => ({ symbol: q.symbol, name: q.name, price: q.price, change: q.change, changePct: q.changePct })),
-    commodities: safeArray(yfData.commodities).map(q => ({ symbol: q.symbol, name: q.name, price: q.price, change: q.change, changePct: q.changePct, history: q.history || [] })),
-    crypto: safeArray(yfData.crypto).map(q => ({ symbol: q.symbol, name: q.name, price: q.price, change: q.change, changePct: q.changePct })),
-    vix: yfQuotes['^VIX'] ? { value: yfQuotes['^VIX'].price, change: yfQuotes['^VIX'].change, changePct: yfQuotes['^VIX'].changePct } : null,
+    indexes: safeArray(yfData.indexes).map(q => ({ symbol: q.symbol, name: q.name, price: safeNumber(q.price), change: safeNumber(q.change), changePct: safeNumber(q.changePct), history: q.history || [] })),
+    rates: safeArray(yfData.rates).map(q => ({ symbol: q.symbol, name: q.name, price: safeNumber(q.price), change: safeNumber(q.change), changePct: safeNumber(q.changePct) })),
+    commodities: safeArray(yfData.commodities).map(q => ({ symbol: q.symbol, name: q.name, price: safeNumber(q.price), change: safeNumber(q.change), changePct: safeNumber(q.changePct), history: q.history || [] })),
+    crypto: safeArray(yfData.crypto).map(q => ({ symbol: q.symbol, name: q.name, price: safeNumber(q.price), change: safeNumber(q.change), changePct: safeNumber(q.changePct) })),
+    vix: yfQuotes['^VIX'] ? { value: safeNumber(yfQuotes['^VIX'].price), change: safeNumber(yfQuotes['^VIX'].change), changePct: safeNumber(yfQuotes['^VIX'].changePct) } : null,
     timestamp: yfData.summary?.timestamp || null,
   };
 
   const metals = {
-    gold: yfGold?.price,
-    goldChange: yfGold?.change,
-    goldChangePct: yfGold?.changePct,
-    goldRecent: yfGold?.history?.map(item => item.close) || [],
-    silver: yfSilver?.price,
-    silverChange: yfSilver?.change,
-    silverChangePct: yfSilver?.changePct,
-    silverRecent: yfSilver?.history?.map(item => item.close) || [],
+    gold: safeNumber(yfGold?.price),
+    goldChange: safeNumber(yfGold?.change),
+    goldChangePct: safeNumber(yfGold?.changePct),
+    goldRecent: (yfGold?.history?.map(item => safeNumber(item.close)) || []).filter(v => v !== null),
+    silver: safeNumber(yfSilver?.price),
+    silverChange: safeNumber(yfSilver?.change),
+    silverChangePct: safeNumber(yfSilver?.changePct),
+    silverRecent: (yfSilver?.history?.map(item => safeNumber(item.close)) || []).filter(v => v !== null),
   };
 
   const acledData = sources.ACLED || {};
@@ -320,14 +342,14 @@ export async function synthesize(data) {
     chokepoints: Object.values(sources.Maritime?.chokepoints || {}).map(cp => ({
       label: cp.label || cp.name,
       note: cp.note || '',
-      lat: cp.lat || 0,
-      lon: cp.lon || 0,
+      lat: safeNumber(cp.lat) ?? 0,
+      lon: safeNumber(cp.lon) ?? 0,
     })),
     nuke: safeArray(sources.Safecast?.sites).map(site => ({
       site: site.site,
       anom: site.anomaly || false,
-      cpm: site.avgCPM,
-      n: site.recentReadings || 0,
+      cpm: safeNumber(site.avgCPM),
+      n: safeCount(site.recentReadings),
     })),
     nukeSignals: safeArray(sources.Safecast?.signals).filter(Boolean),
     airMeta: {
@@ -338,24 +360,24 @@ export async function synthesize(data) {
       ...(openSkyData.error ? { error: openSkyData.error } : {}),
     },
     sdr: {
-      total: sdrData.network?.totalReceivers || 0,
-      online: sdrData.network?.online || 0,
+      total: safeCount(sdrData.network?.totalReceivers),
+      online: safeCount(sdrData.network?.online),
       zones: sdrZones,
     },
-    tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
+    tg: { posts: safeCount(tgData.totalPosts), urgent: tgUrgent, topPosts: tgTop },
     who: safeArray(sources.WHO?.diseaseOutbreakNews).slice(0, 10).map(item => ({
-      title: item.title?.substring(0, 120),
+      title: (item.title || '').substring(0, 120),
       date: item.date,
-      summary: item.summary?.substring(0, 150),
+      summary: (item.summary || '').substring(0, 150),
     })),
     fred: safeArray(sources.FRED?.indicators).map(item => ({
       id: item.id,
       label: item.label,
-      value: item.value,
+      value: safeNumber(item.value),
       date: item.date,
-      recent: item.recent || [],
-      momChange: item.momChange,
-      momChangePct: item.momChangePct,
+      recent: safeArray(item.recent).map(v => safeNumber(v)),
+      momChange: safeNumber(item.momChange),
+      momChangePct: safeNumber(item.momChangePct),
     })),
     energy,
     metals,
@@ -366,35 +388,35 @@ export async function synthesize(data) {
     },
     gscpi: sources.GSCPI?.latest || null,
     defense: safeArray(sources.USAspending?.recentDefenseContracts).slice(0, 5).map(item => ({
-      recipient: item.recipient?.substring(0, 40),
-      amount: item.amount,
-      desc: item.description?.substring(0, 80),
+      recipient: (item.recipient || '').substring(0, 40),
+      amount: safeNumber(item.amount),
+      desc: (item.description || '').substring(0, 80),
     })),
     noaa: {
-      totalAlerts: sources.NOAA?.totalSevereAlerts || 0,
+      totalAlerts: safeCount(sources.NOAA?.totalSevereAlerts),
       alerts: safeArray(sources.NOAA?.topAlerts).filter(item => item.lat != null && item.lon != null).slice(0, 10).map(item => ({
         event: item.event,
         severity: item.severity,
-        headline: item.headline?.substring(0, 120),
-        lat: item.lat,
-        lon: item.lon,
+        headline: (item.headline || '').substring(0, 120),
+        lat: safeNumber(item.lat) ?? 0,
+        lon: safeNumber(item.lon) ?? 0,
       })),
     },
     epa: {
-      totalReadings: sources.EPA?.totalReadings || 0,
+      totalReadings: safeCount(sources.EPA?.totalReadings),
       stations: safeArray(sources.EPA?.readings).filter(item => item.lat != null && item.lon != null).slice(0, 10).map(item => ({
         location: item.location,
         state: item.state,
-        lat: item.lat,
-        lon: item.lon,
+        lat: safeNumber(item.lat) ?? 0,
+        lon: safeNumber(item.lon) ?? 0,
         analyte: item.analyte,
         result: item.result,
         unit: item.unit,
       })),
     },
     acled: acledData.error ? { totalEvents: 0, totalFatalities: 0, byRegion: {}, byType: {}, deadliestEvents: [] } : {
-      totalEvents: acledData.totalEvents || 0,
-      totalFatalities: acledData.totalFatalities || 0,
+      totalEvents: safeCount(acledData.totalEvents),
+      totalFatalities: safeCount(acledData.totalFatalities),
       byRegion: acledData.byRegion || {},
       byType: acledData.byType || {},
       deadliestEvents: safeArray(acledData.deadliestEvents).slice(0, 15).map(item => ({
@@ -402,23 +424,23 @@ export async function synthesize(data) {
         type: item.type,
         country: item.country,
         location: item.location,
-        fatalities: item.fatalities || 0,
-        lat: item.lat || null,
-        lon: item.lon || null,
+        fatalities: safeCount(item.fatalities),
+        lat: safeNumber(item.lat),
+        lon: safeNumber(item.lon),
       })),
     },
     gdelt: {
-      totalArticles: gdeltData.totalArticles || 0,
+      totalArticles: safeCount(gdeltData.totalArticles),
       conflicts: safeArray(gdeltData.conflicts).length,
       economy: safeArray(gdeltData.economy).length,
       health: safeArray(gdeltData.health).length,
       crisis: safeArray(gdeltData.crisis).length,
-      topTitles: safeArray(gdeltData.allArticles).slice(0, 5).map(item => item.title?.substring(0, 80)),
-      geoPoints: safeArray(gdeltData.geoPoints).slice(0, 20).map(item => ({ lat: item.lat, lon: item.lon, name: (item.name || '').substring(0, 80), count: item.count || 1 })),
+      topTitles: safeArray(gdeltData.allArticles).slice(0, 5).map(item => (item.title || '').substring(0, 80)),
+      geoPoints: safeArray(gdeltData.geoPoints).slice(0, 20).map(item => ({ lat: safeNumber(item.lat) ?? 0, lon: safeNumber(item.lon) ?? 0, name: (item.name || '').substring(0, 80), count: safeCount(item.count) || 1 })),
     },
     space: {
-      totalNewObjects: spaceData.totalNewObjects || 0,
-      militarySats: spaceData.militarySatellites || 0,
+      totalNewObjects: safeCount(spaceData.totalNewObjects),
+      militarySats: safeCount(spaceData.militarySatellites),
       militaryByCountry: spaceData.militaryByCountry || {},
       constellations: spaceData.constellations || {},
       iss: spaceData.iss || null,
@@ -428,8 +450,8 @@ export async function synthesize(data) {
         name: item.name,
         country: item.country,
         epoch: item.epoch,
-        apogee: item.apogee,
-        perigee: item.perigee,
+        apogee: safeNumber(item.apogee),
+        perigee: safeNumber(item.perigee),
         type: item.objectType,
       })),
       launchByCountry: spaceData.launchByCountry || {},
@@ -441,8 +463,67 @@ export async function synthesize(data) {
     ideas: [],
     ideasSource: 'disabled',
     newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
+    // Pass through source status from briefing
+    sourceStatus: data.sourceStatus || {},
+    sourceErrors: safeArray(data.errors),
   };
 
   return V2;
 }
 
+/**
+ * Normalize/sanitize a dashboard payload to ensure no undefined, NaN, or null leaks.
+ * Call this BEFORE writing to KV and BEFORE returning from /api/data.
+ */
+export function normalizeDashboardPayload(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return createEmptyPayload();
+  }
+
+  // Deep-walk and replace undefined/NaN values
+  return JSON.parse(JSON.stringify(raw, (key, value) => {
+    if (value === undefined) return null;
+    if (typeof value === 'number' && !Number.isFinite(value)) return null;
+    return value;
+  }));
+}
+
+/**
+ * Create a minimal empty payload that the frontend can render without errors.
+ */
+export function createEmptyPayload() {
+  return {
+    meta: { timestamp: new Date().toISOString(), sourcesQueried: 0, sourcesOk: 0, sourcesFailed: 0 },
+    air: [],
+    thermal: [],
+    tSignals: [],
+    chokepoints: [],
+    nuke: [],
+    nukeSignals: [],
+    airMeta: { fallback: false, liveTotal: 0, timestamp: null, source: 'none' },
+    sdr: { total: 0, online: 0, zones: [] },
+    tg: { posts: 0, urgent: [], topPosts: [] },
+    who: [],
+    fred: [],
+    energy: { wti: null, brent: null, natgas: null, crudeStocks: null, wtiRecent: [], signals: [] },
+    metals: { gold: null, goldChange: null, goldChangePct: null, goldRecent: [], silver: null, silverChange: null, silverChangePct: null, silverRecent: [] },
+    bls: [],
+    treasury: { totalDebt: '0', signals: [] },
+    gscpi: null,
+    defense: [],
+    noaa: { totalAlerts: 0, alerts: [] },
+    epa: { totalReadings: 0, stations: [] },
+    acled: { totalEvents: 0, totalFatalities: 0, byRegion: {}, byType: {}, deadliestEvents: [] },
+    gdelt: { totalArticles: 0, conflicts: 0, economy: 0, health: 0, crisis: 0, topTitles: [], geoPoints: [] },
+    space: { totalNewObjects: 0, militarySats: 0, militaryByCountry: {}, constellations: {}, iss: null, issPosition: null, stationPositions: [], recentLaunches: [], launchByCountry: {}, signals: [] },
+    health: [],
+    news: [],
+    markets: { indexes: [], rates: [], commodities: [], crypto: [], vix: null, timestamp: null },
+    ideas: [],
+    ideasSource: 'disabled',
+    newsFeed: [],
+    sourceStatus: {},
+    sourceErrors: [],
+    delta: null,
+  };
+}

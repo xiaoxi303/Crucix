@@ -7,13 +7,16 @@ import { safeFetch } from '../utils/fetch.mjs';
 const BASE = 'https://api.reliefweb.int/v1';
 // Register your own appname at https://apidoc.reliefweb.int/parameters#appname
 // and replace this value. Without an approved appname the API returns 403.
-const APPNAME = process.env.RELIEFWEB_APPNAME || 'crucix';
+// Lazy: read at call time, not module scope (Cloudflare Workers compatibility)
+function getAppName() {
+  return (typeof process !== 'undefined' ? process.env?.RELIEFWEB_APPNAME : undefined) || 'crucix';
+}
 
 const HDX_BASE = 'https://data.humdata.org/api/3/action';
 
 // POST-based search for reports (ReliefWeb API v1 POST format)
 async function rwPost(endpoint, body) {
-  const url = `${BASE}/${endpoint}?appname=${APPNAME}`;
+  const url = `${BASE}/${endpoint}?appname=${getAppName()}`;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);

@@ -66,12 +66,11 @@ const HOTSPOTS = {
 const CLOUDFLARE_HOTSPOTS = ['middleEast', 'taiwan', 'ukraine'];
 
 function selectedHotspotEntries() {
-  const configured = process.env.OPENSKY_HOTSPOTS
-    ? process.env.OPENSKY_HOTSPOTS.split(',').map(item => item.trim()).filter(Boolean)
-    : null;
-  const keys = configured || (process.env.CRUCIX_RUNTIME === 'cloudflare' || globalThis.__CRUCIX_RUNTIME__ === 'cloudflare'
-    ? CLOUDFLARE_HOTSPOTS
-    : Object.keys(HOTSPOTS));
+  const pe = typeof process !== 'undefined' ? process.env : {};
+  const configured = (pe?.OPENSKY_HOTSPOTS || '')
+    .split(',').map(item => item.trim()).filter(Boolean);
+  const isCloudflare = pe?.CRUCIX_RUNTIME === 'cloudflare' || globalThis.__CRUCIX_RUNTIME__ === 'cloudflare';
+  const keys = configured.length ? configured : (isCloudflare ? CLOUDFLARE_HOTSPOTS : Object.keys(HOTSPOTS));
   return keys.filter(key => HOTSPOTS[key]).map(key => [key, HOTSPOTS[key]]);
 }
 

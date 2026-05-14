@@ -21,17 +21,16 @@ function parseCSV(rawText) {
 }
 
 // Fetch fires in a bounding box
-async function fetchFires(opts = {}) {
+async function fetchFires(mapKey, opts = {}) {
   const {
     west = -180, south = -90, east = 180, north = 90,
     days = 1,
     source = 'VIIRS_SNPP_NRT',
   } = opts;
 
-  const key = process.env.FIRMS_MAP_KEY;
-  if (!key) return { error: 'No FIRMS_MAP_KEY' };
+  if (!mapKey) return { error: 'No FIRMS_MAP_KEY' };
 
-  const url = `${FIRMS_BASE}/${key}/${source}/${west},${south},${east},${north}/${days}`;
+  const url = `${FIRMS_BASE}/${mapKey}/${source}/${west},${south},${east},${north}/${days}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   try {
@@ -99,8 +98,10 @@ function analyzeFires(fires, regionLabel) {
 }
 
 // Briefing
-export async function briefing() {
-  const key = process.env.FIRMS_MAP_KEY;
+// @param {string} mapKey - FIRMS_MAP_KEY (passed from caller, not process.env)
+export async function briefing(mapKey) {
+  // Backwards compat for CLI / Node.js local mode
+  const key = mapKey || (typeof process !== 'undefined' ? process.env?.FIRMS_MAP_KEY : undefined);
   if (!key) {
     return {
       source: 'NASA FIRMS',
@@ -113,9 +114,9 @@ export async function briefing() {
   // Fetch all hotspots in parallel
   const entries = Object.entries(HOTSPOTS);
   const rawResults = await Promise.all(
-    entries.map(async ([key, box]) => {
-      const fires = await fetchFires({ ...box, days: 2 });
-      return { key, label: box.label, fires };
+    entries.map(async ([k, box]) => {
+      const fires = await fetchFires(key, { ...box, days: 2 });
+      return { key: k, label: box.label, fires };
     })
   );
 

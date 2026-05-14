@@ -1,9 +1,10 @@
 import { fullBriefingCloudflare, getCloudflareSourcePlan } from '../apis/briefing-cloudflare.mjs';
-import { synthesize } from '../dashboard/synthesize-core.mjs';
+import { synthesize, normalizeDashboardPayload } from '../dashboard/synthesize-core.mjs';
 import { createStorage, STORAGE_KEYS } from '../lib/storage/index.mjs';
 import { StorageMemoryManager } from '../lib/storage/memory.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
 import { createCloudflareLLMProvider } from './cloudflare-llm.mjs';
+import { getRuntimeConfig } from '../lib/config/runtime-config.mjs';
 
 const ENV_KEYS = [
   'FRED_API_KEY',
@@ -30,6 +31,7 @@ const ENV_KEYS = [
   'ENABLE_DISCORD',
   'ENABLE_TELEGRAM_SOURCE',
   'ENABLE_REDDIT_SOURCE',
+  'ENABLE_AISSTREAM_SOURCE',
   'LANGUAGE',
   'CRUCIX_LANG',
   'REFRESH_INTERVAL_MINUTES',
@@ -39,6 +41,11 @@ const ENV_KEYS = [
   'FRED_SERIES_IDS',
   'YFINANCE_SYMBOLS',
   'OPENSKY_HOTSPOTS',
+  'RELIEFWEB_APPNAME',
+  'ADSB_API_KEY',
+  'RAPIDAPI_KEY',
+  'REDDIT_CLIENT_ID',
+  'REDDIT_CLIENT_SECRET',
 ];
 
 export function ensureProcessEnv(env = {}) {
@@ -81,6 +88,41 @@ export function getEnabledSources(env = {}) {
   };
 }
 
+/**
+ * Try to load cached source data for failed sources.
+ */
+async function loadCachedSources(storage, failedNames) {
+  const cached = {};
+  for (const name of failedNames) {
+    try {
+      const data = await storage.getJSON(STORAGE_KEYS.sourceLastGood(name), null);
+      if (data) {
+        cached[name] = data;
+      }
+    } catch {
+      // Ignore cache read failures
+    }
+  }
+  return cached;
+}
+
+/**
+ * Save successful source data to KV cache for future fallback.
+ */
+async function saveCachedSources(storage, rawData) {
+  const sources = rawData?.sources || {};
+  const promises = [];
+  for (const [name, data] of Object.entries(sources)) {
+    if (data && !data.error) {
+      promises.push(
+        storage.putJSON(STORAGE_KEYS.sourceLastGood(name), data).catch(() => {})
+      );
+    }
+  }
+  // Fire and forget — don't block sweep
+  await Promise.allSettled(promises);
+}
+
 export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}) {
   ensureProcessEnv(env);
   const storage = await createStorage({ env });
@@ -98,6 +140,32 @@ export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}
 
   try {
     const rawData = await fullBriefingCloudflare(env);
+
+    // ── Per-source KV caching ──
+    // Save successful sources for future fallback
+    await saveCachedSources(storage, rawData);
+
+    // Load cached data for failed sources
+    const failedNames = (rawData.errors || []).map(e => e.name);
+    if (failedNames.length > 0) {
+      const cachedSources = await loadCachedSources(storage, failedNames);
+      for (const [name, cachedData] of Object.entries(cachedSources)) {
+        rawData.sources[name] = cachedData;
+        // Mark as cached in sourceStatus
+        if (rawData.sourceStatus?.[name]) {
+          rawData.sourceStatus[name].cached = true;
+          rawData.sourceStatus[name].ok = true;
+          rawData.sourceStatus[name].error = null;
+        }
+      }
+      // Update counts
+      const cachedCount = Object.keys(cachedSources).length;
+      if (rawData.crucix) {
+        rawData.crucix.sourcesOk += cachedCount;
+        rawData.crucix.sourcesFailed -= cachedCount;
+      }
+    }
+
     const synthesized = await synthesize(rawData);
     const memory = await StorageMemoryManager.create(storage);
     const delta = await memory.addRun(synthesized);
@@ -122,21 +190,26 @@ export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}
 
     await memory.pruneAlertedSignals();
 
+    // ── Normalize payload before writing ──
+    const normalized = normalizeDashboardPayload(synthesized);
+
     const finishedAt = new Date().toISOString();
-    const latestWrite = await storage.putJSON(STORAGE_KEYS.latest, synthesized);
+    const latestWrite = await storage.putJSON(STORAGE_KEYS.latest, normalized);
     const lastSweep = {
       status: latestWrite.ok ? 'success' : 'partial',
       trigger,
       startedAt,
       finishedAt,
       durationMs: Date.now() - new Date(startedAt).getTime(),
-      sourcesOk: synthesized.meta?.sourcesOk || 0,
-      sourcesQueried: synthesized.meta?.sourcesQueried || 0,
-      sourcesFailed: synthesized.meta?.sourcesFailed || 0,
+      sourcesOk: normalized.meta?.sourcesOk || 0,
+      sourcesQueried: normalized.meta?.sourcesQueried || 0,
+      sourcesFailed: normalized.meta?.sourcesFailed || 0,
+      sourceErrors: (rawData.errors || []).map(e => ({ name: e.name, error: e.error })),
       latestWrite,
     };
 
     await storage.putJSON(STORAGE_KEYS.metaLastSweep, lastSweep);
+    await storage.putJSON(STORAGE_KEYS.metaLastSuccessfulSweep, lastSweep);
     await storage.putJSON(STORAGE_KEYS.metaHealth, {
       status: latestWrite.ok ? 'ok' : 'degraded',
       runtime: 'cloudflare',
@@ -146,7 +219,7 @@ export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}
       storage: await storage.healthCheck(),
     });
 
-    return { ok: latestWrite.ok, data: synthesized, lastSweep };
+    return { ok: latestWrite.ok, data: normalized, lastSweep };
   } catch (err) {
     const failedAt = new Date().toISOString();
     const health = {
@@ -162,6 +235,7 @@ export async function runSweepCycleCloudflare(env = {}, ctx = null, options = {}
     };
     await storage.putJSON(STORAGE_KEYS.metaHealth, health);
     await storage.putJSON(STORAGE_KEYS.metaLastSweep, health);
+    await storage.putJSON(STORAGE_KEYS.metaLastFailedSweep, health);
     console.error('[Cloudflare Sweep] 情报扫描失败:', err);
     return { ok: false, error: err.message };
   }

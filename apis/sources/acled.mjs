@@ -90,9 +90,11 @@ async function loginOAuth(email, password) {
 }
 
 // Try both auth strategies
-async function authenticate() {
-  const email    = process.env.ACLED_EMAIL;
-  const password = process.env.ACLED_PASSWORD;
+// @param {string} emailParam - ACLED_EMAIL (passed from caller)
+// @param {string} passwordParam - ACLED_PASSWORD (passed from caller)
+async function authenticate(emailParam, passwordParam) {
+  const email    = emailParam || (typeof process !== 'undefined' ? process.env?.ACLED_EMAIL : undefined);
+  const password = passwordParam || (typeof process !== 'undefined' ? process.env?.ACLED_PASSWORD : undefined);
   if (!email || !password) {
     return { error: 'No ACLED credentials. Set ACLED_EMAIL and ACLED_PASSWORD in .env.' };
   }
@@ -236,8 +238,12 @@ function groupBy(events, field) {
 }
 
 // Briefing — last 7 days of global conflict events
-export async function briefing() {
-  if (!process.env.ACLED_EMAIL || !process.env.ACLED_PASSWORD) {
+// @param {string} emailParam - ACLED_EMAIL (passed from caller)
+// @param {string} passwordParam - ACLED_PASSWORD (passed from caller)
+export async function briefing(emailParam, passwordParam) {
+  const email = emailParam || (typeof process !== 'undefined' ? process.env?.ACLED_EMAIL : undefined);
+  const password = passwordParam || (typeof process !== 'undefined' ? process.env?.ACLED_PASSWORD : undefined);
+  if (!email || !password) {
     return {
       source: 'ACLED',
       timestamp: new Date().toISOString(),
