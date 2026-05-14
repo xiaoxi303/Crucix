@@ -3,6 +3,8 @@ import { getEnabledSources, runSweepCycleCloudflare } from './cloudflare-sweep.m
 import { DEFAULT_LOCALE, getRuntimeLocale, getSupportedLocaleInfo, normalizeLanguage } from './runtime-i18n.mjs';
 
 const startedAt = Date.now();
+const SWEEP_RUNNING_TTL_MS = 10 * 60 * 1000;
+const SWEEP_RETRY_TTL_MS = 90 * 1000;
 
 function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
@@ -61,6 +63,51 @@ async function readLatest(storage) {
   return storage.getJSON(STORAGE_KEYS.latest, null);
 }
 
+function timestampMs(...values) {
+  for (const value of values) {
+    if (!value) continue;
+    const ms = new Date(value).getTime();
+    if (Number.isFinite(ms)) return ms;
+  }
+  return 0;
+}
+
+function isRecent(ms, ttl) {
+  return ms && Date.now() - ms < ttl;
+}
+
+async function queueSweepIfNeeded(env, ctx, storage, latest, trigger = 'bootstrap') {
+  if (latest?.meta || !env.CRUCIX_KV) return { queued: false, reason: latest?.meta ? 'data-exists' : 'kv-missing' };
+
+  const health = await storage.getJSON(STORAGE_KEYS.metaHealth, null);
+  const stateTime = timestampMs(
+    health?.startedAt,
+    health?.updatedAt,
+    health?.failedAt,
+    health?.lastSweep?.startedAt,
+    health?.lastSweep?.finishedAt,
+  );
+
+  if (['running', 'queued'].includes(health?.status) && isRecent(stateTime, SWEEP_RUNNING_TTL_MS)) {
+    return { queued: false, reason: 'already-running' };
+  }
+  if (health?.status === 'error' && isRecent(stateTime, SWEEP_RETRY_TTL_MS)) {
+    return { queued: false, reason: 'recent-error' };
+  }
+
+  const now = new Date().toISOString();
+  await storage.putJSON(STORAGE_KEYS.metaHealth, {
+    status: 'queued',
+    trigger,
+    runtime: 'cloudflare',
+    startedAt: now,
+    updatedAt: now,
+    message: '首次访问触发情报扫描，正在后台生成 dashboard 数据。',
+  });
+  ctx.waitUntil(runSweepCycleCloudflare(env, ctx, { trigger }));
+  return { queued: true, trigger };
+}
+
 async function serveAsset(request, env, assetPath, injection = '') {
   if (!env.ASSETS) {
     return new Response('ASSETS binding missing', { status: 500 });
@@ -111,6 +158,8 @@ async function handleHealth(env) {
     runtime: 'cloudflare',
     uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
     lastSweep: lastSweep || health?.lastSweep || null,
+    sweepStartedAt: health?.startedAt || health?.lastSweep?.startedAt || lastSweep?.startedAt || null,
+    lastError: health?.error || lastSweep?.error || null,
     kv: {
       bound: Boolean(env.CRUCIX_KV),
       ok: Boolean(storageHealth.ok),
@@ -136,13 +185,22 @@ async function handleRequest(request, env, ctx) {
   if (request.method === 'GET' && url.pathname === '/') {
     const storage = await createStorage({ env });
     const latest = await readLatest(storage);
+    await queueSweepIfNeeded(env, ctx, storage, latest, 'bootstrap');
     return serveAsset(request, env, latest?.meta ? '/jarvis.html' : '/loading.html', htmlInjection(env, language));
+  }
+
+  if (request.method === 'GET' && (url.pathname === '/loading' || url.pathname === '/loading.html')) {
+    const storage = await createStorage({ env });
+    const latest = await readLatest(storage);
+    await queueSweepIfNeeded(env, ctx, storage, latest, 'bootstrap');
+    return serveAsset(request, env, '/loading.html', htmlInjection(env, language));
   }
 
   if (request.method === 'GET' && url.pathname === '/api/data') {
     const storage = await createStorage({ env });
     const latest = await readLatest(storage);
     if (!latest?.meta) {
+      await queueSweepIfNeeded(env, ctx, storage, latest, 'data-warmup');
       return json({ error: '暂无数据，首次情报扫描仍在进行', status: 'warming' }, { status: 503 });
     }
     return json(latest);

@@ -30,6 +30,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #countdown .eta{color:var(--text)}
 #countdown .bar-wrap{width:min(340px,calc(100vw - 48px));height:2px;background:rgba(100,240,200,0.08);margin-top:8px;overflow:hidden}
 #countdown .bar-fill{height:100%;background:var(--accent);width:0%;transition:width 1s linear;box-shadow:0 0 6px var(--accent)}
+#details{max-width:min(520px,calc(100vw - 48px));font-size:11px;color:var(--dim);line-height:1.8;text-align:center;min-height:20px}
+#details strong{color:var(--accent);font-weight:500}
+#details .err{color:#ff8f8f}
 </style>
 </head>
 <body>
@@ -38,6 +41,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
   <div id="bootLines"></div>
   <div id="status"><span class="blink"></span><span id="statusText">正在采集情报...</span></div>
   <div id="countdown"><span id="etaText"></span><div class="bar-wrap"><div class="bar-fill" id="barFill"></div></div></div>
+  <div id="details"></div>
 </div>
 
 <script>
@@ -71,7 +75,56 @@ setInterval(() => {
 
 const etaText = document.getElementById('etaText');
 const barFill = document.getElementById('barFill');
+const details = document.getElementById('details');
 let countdownInterval = null;
+let healthInterval = null;
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+}
+
+function renderHealth(h) {
+  if (!h || !details) return;
+  if (!h.kv?.bound) {
+    details.innerHTML = '<span class="err">KV 未绑定：请在 Worker 绑定中把 KV namespace 命名为 <strong>CRUCIX_KV</strong></span>';
+    statusText.textContent = '等待 KV 绑定...';
+    return;
+  }
+  if (!h.kv?.ok) {
+    details.innerHTML = `<span class="err">KV 读取失败：${escapeHtml(h.kv.error || '未知错误')}</span>`;
+    statusText.textContent = 'KV 状态异常...';
+    return;
+  }
+  if (h.status === 'error') {
+    details.innerHTML = `<span class="err">最近一次扫描失败：${escapeHtml(h.lastError || h.lastSweep?.error || '请查看 Workers Logs')}</span>`;
+    statusText.textContent = '扫描失败，等待自动重试...';
+    return;
+  }
+  if (h.status === 'queued') {
+    details.innerHTML = '首次扫描已加入后台任务，正在等待 Worker 执行...';
+    return;
+  }
+  if (h.status === 'running') {
+    details.innerHTML = '情报扫描正在运行，完成后会自动进入仪表盘。';
+    return;
+  }
+  if (!h.dataAvailable) {
+    details.innerHTML = 'KV 已连接，正在生成第一份 <strong>latest</strong> 仪表盘数据。';
+  }
+}
+
+function refreshHealth() {
+  return fetch('/api/health', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(h => {
+      renderHealth(h);
+      return h;
+    })
+    .catch(() => {
+      if (details) details.innerHTML = '<span class="err">暂时无法读取 /api/health，正在重试...</span>';
+      return null;
+    });
+}
 
 function startCountdown(elapsedSeconds) {
   let remaining = Math.max(0, SWEEP_ESTIMATE_S - elapsedSeconds);
@@ -90,14 +143,14 @@ function startCountdown(elapsedSeconds) {
   countdownInterval = setInterval(tick, 1000);
 }
 
-fetch('/api/health')
-  .then(r => r.json())
+refreshHealth()
   .then(h => {
-    const started = h.sweepStartedAt || h.lastSweep?.startedAt;
+    const started = h?.sweepStartedAt || h?.lastSweep?.startedAt;
     const elapsed = started ? Math.floor((Date.now() - new Date(started).getTime()) / 1000) : 0;
     startCountdown(elapsed);
   })
   .catch(() => startCountdown(0));
+healthInterval = setInterval(refreshHealth, 5000);
 
 let redirected = false;
 function goToDashboard() {
@@ -105,6 +158,7 @@ function goToDashboard() {
   redirected = true;
   clearInterval(countdownInterval);
   clearInterval(pollInterval);
+  clearInterval(healthInterval);
   barFill.style.transition = 'width 0.4s ease';
   barFill.style.width = '100%';
   etaText.textContent = '';
